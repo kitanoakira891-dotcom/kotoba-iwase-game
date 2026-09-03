@@ -1,0 +1,83 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    match /rooms/{roomId} {
+      function isHost() {
+        return signedIn() && resource.data.hostUid == request.auth.uid;
+      }
+
+      function validRoom(data) {
+        return data.keys().hasOnly(['hostUid', 'hostName', 'createdAt'])
+          && data.hostUid is string
+          && data.hostUid == request.auth.uid
+          && data.hostName is string
+          && data.hostName.size() >= 1
+          && data.hostName.size() <= 16
+          && data.createdAt == request.time;
+      }
+
+      // 部屋コードの総当たりを容易にする一覧取得は拒否し、既知コードの直接取得だけを許可する。
+      allow get: if signedIn();
+      allow list: if false;
+      allow create: if signedIn()
+        && roomId.matches('^[A-Z2-9]{6}$')
+        && validRoom(request.resource.data);
+      allow update: if false;
+      allow delete: if isHost();
+
+      match /words/{wordId} {
+        function roomDoc() {
+          return get(/databases/$(database)/documents/rooms/$(roomId));
+        }
+
+        function roomHost() {
+          return signedIn() && roomDoc().data.hostUid == request.auth.uid;
+        }
+
+        function validWord(data) {
+          return data.keys().hasOnly(['text', 'points', 'count', 'totalScore', 'order', 'createdAt', 'updatedAt'])
+            && data.text is string
+            && data.text.size() >= 1
+            && data.text.size() <= 40
+            && data.points is int
+            && data.points >= -999
+            && data.points <= 999
+            && data.count is int
+            && data.count >= 0
+            && data.count <= 1000000
+            && data.totalScore is int
+            && data.totalScore == data.count * data.points
+            && data.order is int
+            && data.createdAt is timestamp
+            && data.updatedAt is timestamp;
+        }
+
+        allow read: if signedIn();
+        allow create: if roomHost()
+          && validWord(request.resource.data)
+          && request.resource.data.count == 0
+          && request.resource.data.totalScore == 0
+          && request.resource.data.createdAt == request.time
+          && request.resource.data.updatedAt == request.time;
+        allow delete: if roomHost();
+        allow update: if (
+          roomHost()
+          && validWord(request.resource.data)
+          && request.resource.data.createdAt == resource.data.createdAt
+          && request.resource.data.updatedAt == request.time
+        ) || (
+          signedIn()
+          && validWord(request.resource.data)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['count', 'totalScore', 'updatedAt'])
+          && request.resource.data.count == resource.data.count + 1
+          && request.resource.data.totalScore == resource.data.totalScore + resource.data.points
+          && request.resource.data.updatedAt == request.time
+        );
+      }
+    }
+  }
+}
