@@ -17,19 +17,21 @@ service cloud.firestore {
 
       match /members/{memberId} {
         function validMember(data) {
-          return data.keys().hasOnly(['uid', 'name', 'joinedAt', 'updatedAt'])
+          return data.keys().hasOnly(['uid', 'name', 'joinedAt', 'lastSeenAt', 'updatedAt'])
             && data.uid is string && data.uid == memberId
             && data.name is string && data.name.size() >= 1 && data.name.size() <= 16
-            && data.joinedAt is timestamp && data.updatedAt is timestamp;
+            && data.joinedAt is timestamp && data.lastSeenAt is timestamp && data.updatedAt is timestamp;
         }
         allow read: if signedIn() && mainRoom();
         allow create: if signedIn() && mainRoom() && memberId == request.auth.uid
           && validMember(request.resource.data)
           && request.resource.data.joinedAt == request.time
+          && request.resource.data.lastSeenAt == request.time
           && request.resource.data.updatedAt == request.time;
         allow update: if signedIn() && mainRoom() && memberId == request.auth.uid
           && validMember(request.resource.data)
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'updatedAt'])
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'lastSeenAt', 'updatedAt'])
+          && request.resource.data.lastSeenAt == request.time
           && request.resource.data.updatedAt == request.time;
         allow delete: if signedIn() && mainRoom() && memberId == request.auth.uid;
       }

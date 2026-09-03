@@ -1,7 +1,7 @@
 import {firebaseConfig} from './firebase-config.js';
 import {initializeApp} from 'https://www.gstatic.com/firebasejs/12.2.1/firebase-app.js';
 import {getAuth, signInAnonymously} from 'https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js';
-import {getFirestore, doc, getDoc, getDocs, collection, deleteDoc, onSnapshot, serverTimestamp, runTransaction, writeBatch, query, orderBy, where} from 'https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js';
+import {getFirestore, doc, getDoc, getDocs, collection, deleteDoc, updateDoc, onSnapshot, serverTimestamp, runTransaction, writeBatch, query, orderBy, where} from 'https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js';
 
 const DEFAULT_WORDS = [
   {text:'いや',points:1},{text:'でも',points:1},{text:'いや～でも～',points:1},
@@ -22,6 +22,8 @@ let members = [];
 let memberWords = [];
 let unsubscribers = [];
 let toastTimer;
+let heartbeatTimer;
+let presenceRenderTimer;
 
 function isConfigured(config) {
   const required = ['apiKey','authDomain','projectId','appId'];
@@ -102,11 +104,18 @@ async function enter(code, snapshot) {
   await runTransaction(db, async transaction => {
     const current = await transaction.get(memberRef);
     if (current.exists()) {
-      transaction.update(memberRef, {name:playerName(), updatedAt:serverTimestamp()});
+      transaction.update(memberRef, {name:playerName(), lastSeenAt:serverTimestamp(), updatedAt:serverTimestamp()});
     } else {
-      transaction.set(memberRef, {uid:user.uid, name:playerName(), joinedAt:serverTimestamp(), updatedAt:serverTimestamp()});
+      transaction.set(memberRef, {uid:user.uid, name:playerName(), joinedAt:serverTimestamp(), lastSeenAt:serverTimestamp(), updatedAt:serverTimestamp()});
     }
   });
+
+  clearInterval(heartbeatTimer);
+  clearInterval(presenceRenderTimer);
+  heartbeatTimer = setInterval(() => {
+    updateDoc(memberRef, {lastSeenAt:serverTimestamp(), updatedAt:serverTimestamp()}).catch(() => {});
+  }, 30000);
+  presenceRenderTimer = setInterval(renderMembers, 15000);
 
   unsubscribers.forEach(stop => stop());
   unsubscribers = [];
@@ -146,10 +155,10 @@ function render() {
 
   for (const word of words) {
     const points = finiteNumber(word.points);
-    const count = finiteNumber(word.count);
-    const totalScore = finiteNumber(word.totalScore);
-    scores += totalScore;
-    counts += count;
+    const mine = finiteNumber(memberWords.find(item => item.uid === user.uid && item.wordId === word.id)?.count);
+    const myScore = mine * points;
+    scores += myScore;
+    counts += mine;
 
     const item = document.createElement('article');
     item.className = `word${points >= 10 ? ' ten' : ''}`;
@@ -163,7 +172,7 @@ function render() {
     meta.append('1回 ');
     const pointText = document.createElement('b');
     pointText.textContent = `${points >= 0 ? '+' : ''}${points}点`;
-    meta.append(pointText, ` ・ 合計 ${totalScore}点`);
+    meta.append(pointText, ` ・ 自分の合計 ${myScore}点`);
     details.append(title, meta);
 
     const actions = document.createElement('div');
@@ -183,8 +192,7 @@ function render() {
     counter.className = 'counter';
     const countText = document.createElement('span');
     countText.className = 'count';
-    countText.textContent = String(count);
-    const mine = memberWords.find(item => item.uid === user.uid && item.wordId === word.id)?.count || 0;
+    countText.textContent = String(mine);
     const minus = document.createElement('button');
     minus.className = 'minus';
     minus.textContent = '−';
@@ -210,7 +218,12 @@ function renderMembers() {
   const list = $('#memberList');
   list.replaceChildren();
   const pointsByWord = new Map(words.map(word => [word.id, finiteNumber(word.points)]));
-  const totals = new Map(members.map(member => [member.uid, {member, count:0, score:0}]));
+  const activeMembers = members.filter(member => {
+    if (member.uid === user.uid) return true;
+    const lastSeen = typeof member.lastSeenAt?.toMillis === 'function' ? member.lastSeenAt.toMillis() : 0;
+    return Date.now() - lastSeen < 90000;
+  });
+  const totals = new Map(activeMembers.map(member => [member.uid, {member, count:0, score:0}]));
   for (const item of memberWords) {
     const total = totals.get(item.uid);
     if (!total) continue;
@@ -240,7 +253,7 @@ function renderMembers() {
     row.append(name, count, score);
     list.append(row);
   }
-  $('#memberCount').textContent = `${members.length}人`;
+  $('#memberCount').textContent = `${activeMembers.length}人`;
 }
 
 async function adjustCount(word, delta) {
@@ -315,6 +328,8 @@ async function copyShareUrl() {
 }
 
 async function leaveRoom() {
+  clearInterval(heartbeatTimer);
+  clearInterval(presenceRenderTimer);
   const personalSnapshots = await getDocs(query(
     collection(db, 'rooms', room, 'memberWords'),
     where('uid', '==', user.uid)
