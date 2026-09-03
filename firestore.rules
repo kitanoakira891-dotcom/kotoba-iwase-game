@@ -4,24 +4,16 @@ service cloud.firestore {
     function signedIn() { return request.auth != null; }
 
     match /rooms/{roomId} {
-      function roomAfter() {
-        return getAfter(/databases/$(database)/documents/rooms/$(roomId));
-      }
-      function roomHost() {
-        return signedIn() && roomAfter().data.hostUid == request.auth.uid;
-      }
+      function mainRoom() { return roomId == 'MAIN00'; }
       function validRoom(data) {
-        return data.keys().hasOnly(['hostUid', 'hostName', 'createdAt'])
-          && data.hostUid is string && data.hostUid == request.auth.uid
-          && data.hostName is string && data.hostName.size() >= 1 && data.hostName.size() <= 16
-          && data.createdAt == request.time;
+        return data.keys().hasOnly(['createdAt']) && data.createdAt == request.time;
       }
 
-      allow get: if signedIn();
+      allow get: if signedIn() && mainRoom();
       allow list: if false;
-      allow create: if signedIn() && roomId.matches('^[A-Z0-9]{6}$') && validRoom(request.resource.data);
+      allow create: if signedIn() && mainRoom() && validRoom(request.resource.data);
       allow update: if false;
-      allow delete: if roomHost();
+      allow delete: if false;
 
       match /members/{memberId} {
         function validMember(data) {
@@ -30,16 +22,16 @@ service cloud.firestore {
             && data.name is string && data.name.size() >= 1 && data.name.size() <= 16
             && data.joinedAt is timestamp && data.updatedAt is timestamp;
         }
-        allow read: if signedIn();
-        allow create: if signedIn() && memberId == request.auth.uid
+        allow read: if signedIn() && mainRoom();
+        allow create: if signedIn() && mainRoom() && memberId == request.auth.uid
           && validMember(request.resource.data)
           && request.resource.data.joinedAt == request.time
           && request.resource.data.updatedAt == request.time;
-        allow update: if signedIn() && memberId == request.auth.uid
+        allow update: if signedIn() && mainRoom() && memberId == request.auth.uid
           && validMember(request.resource.data)
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'updatedAt'])
           && request.resource.data.updatedAt == request.time;
-        allow delete: if roomHost() || (signedIn() && memberId == request.auth.uid);
+        allow delete: if signedIn() && mainRoom() && memberId == request.auth.uid;
       }
 
       match /words/{wordId} {
@@ -61,17 +53,19 @@ service cloud.firestore {
               ? after.data.count == get(path).data.count + delta
               : delta == 1 && after.data.count == 1);
         }
-        allow read: if signedIn();
-        allow create: if roomHost() && validWord(request.resource.data)
+        allow read: if signedIn() && mainRoom();
+        allow create: if signedIn() && mainRoom() && validWord(request.resource.data)
           && request.resource.data.count == 0 && request.resource.data.totalScore == 0
           && request.resource.data.createdAt == request.time && request.resource.data.updatedAt == request.time;
-        allow delete: if roomHost();
+        allow delete: if signedIn() && mainRoom();
         allow update: if (
-          roomHost() && validWord(request.resource.data)
+          signedIn() && mainRoom() && validWord(request.resource.data)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['text', 'points', 'totalScore', 'updatedAt'])
+          && request.resource.data.count == resource.data.count
           && request.resource.data.createdAt == resource.data.createdAt
           && request.resource.data.updatedAt == request.time
         ) || (
-          signedIn() && validWord(request.resource.data)
+          signedIn() && mainRoom() && validWord(request.resource.data)
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['count', 'totalScore', 'updatedAt'])
           && (request.resource.data.count == resource.data.count + 1 || request.resource.data.count == resource.data.count - 1)
           && request.resource.data.totalScore == resource.data.totalScore
@@ -95,22 +89,18 @@ service cloud.firestore {
           return after.data.count == before.data.count + delta
             && after.data.totalScore == before.data.totalScore + delta * before.data.points;
         }
-        allow read: if signedIn();
-        allow create: if signedIn() && request.resource.data.uid == request.auth.uid
+        allow read: if signedIn() && mainRoom();
+        allow create: if signedIn() && mainRoom() && request.resource.data.uid == request.auth.uid
           && validMemberWord(request.resource.data) && request.resource.data.count == 1
           && request.resource.data.updatedAt == request.time && wordChangeMatches(1);
         allow update: if (
-          signedIn() && resource.data.uid == request.auth.uid && validMemberWord(request.resource.data)
+          signedIn() && mainRoom() && resource.data.uid == request.auth.uid && validMemberWord(request.resource.data)
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['count', 'updatedAt'])
           && (request.resource.data.count == resource.data.count + 1 || request.resource.data.count == resource.data.count - 1)
           && request.resource.data.updatedAt == request.time
           && wordChangeMatches(request.resource.data.count - resource.data.count)
-        ) || (
-          roomHost() && validMemberWord(request.resource.data)
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['count', 'updatedAt'])
-          && request.resource.data.count == 0 && request.resource.data.updatedAt == request.time
         );
-        allow delete: if roomHost() || (signedIn() && resource.data.uid == request.auth.uid);
+        allow delete: if signedIn() && mainRoom() && resource.data.uid == request.auth.uid;
       }
     }
   }

@@ -11,13 +11,12 @@ const DEFAULT_WORDS = [
   {text:'マウント',points:5},{text:'腹減った',points:5},{text:'ニセコでスマホを無くした話',points:5},{text:'紅ショウガの許可申請',points:5},{text:'モンストコラボの話',points:5},
   {text:'近ちゃんはそんなこと言わない',points:10}
 ];
+const MAIN_ROOM = 'MAIN00';
 
 const $ = selector => document.querySelector(selector);
 let db;
 let user;
 let room = '';
-let host = false;
-let roomHostUid = '';
 let words = [];
 let members = [];
 let memberWords = [];
@@ -43,16 +42,7 @@ function toast(text) {
 }
 
 function playerName() {
-  return $('#playerName').value.trim() || localStorage.getItem('kp-name') || 'ゲスト';
-}
-
-function makeCode() {
-  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-  return Array.from({length: 6}, () => alphabet[Math.floor(Math.random() * alphabet.length)]).join('');
-}
-
-function normalizeRoomCode(value) {
-  return String(value).normalize('NFKC').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
+  return $('#playerName').value.trim() || localStorage.getItem('kp-name') || '';
 }
 
 function accent(points) {
@@ -77,63 +67,36 @@ async function init() {
   const credential = await signInAnonymously(auth);
   user = credential.user;
   setStatus('オンライン', 'ok');
-  $('#createBtn').disabled = false;
   $('#joinBtn').disabled = false;
-
-  const params = new URLSearchParams(location.hash.slice(1));
-  const code = normalizeRoomCode(params.get('room') || '');
-  if (/^[A-Z0-9]{6}$/.test(code)) $('#roomInput').value = code;
-}
-
-async function createRoom() {
-  if (!user) return toast('接続中です');
-  localStorage.setItem('kp-name', playerName());
-
-  for (let attempt = 0; attempt < 8; attempt += 1) {
-    const code = makeCode();
-    try {
-      await runTransaction(db, async transaction => {
-        const roomRef = doc(db, 'rooms', code);
-        const existing = await transaction.get(roomRef);
-        if (existing.exists()) throw new Error('ROOM_CODE_COLLISION');
-        transaction.set(roomRef, {hostUid:user.uid, hostName:playerName(), createdAt:serverTimestamp()});
-        DEFAULT_WORDS.forEach((word, index) => {
-          const wordRef = doc(collection(db, 'rooms', code, 'words'));
-          transaction.set(wordRef, {...word, count:0, totalScore:0, order:index, createdAt:serverTimestamp(), updatedAt:serverTimestamp()});
-        });
-      });
-      await enter(code);
-      return;
-    } catch (error) {
-      if (error.message !== 'ROOM_CODE_COLLISION') throw error;
-    }
-  }
-  throw new Error('部屋コードを確保できませんでした。もう一度お試しください。');
+  if (playerName()) await joinRoom();
 }
 
 async function joinRoom() {
   if (!user) return toast('接続中です');
-  const code = normalizeRoomCode($('#roomInput').value);
-  if (!/^[A-Z0-9]{6}$/.test(code)) return toast('6桁の部屋コードを入力してください');
-  const snapshot = await getDoc(doc(db, 'rooms', code));
-  if (!snapshot.exists()) return toast('部屋が見つかりません');
-  localStorage.setItem('kp-name', playerName());
-  await enter(code, snapshot);
+  const name = playerName();
+  if (!name) return toast('表示名を入力してください');
+  localStorage.setItem('kp-name', name);
+  const roomRef = doc(db, 'rooms', MAIN_ROOM);
+  await runTransaction(db, async transaction => {
+    const existing = await transaction.get(roomRef);
+    if (existing.exists()) return;
+    transaction.set(roomRef, {createdAt:serverTimestamp()});
+    DEFAULT_WORDS.forEach((word, index) => {
+      const wordRef = doc(collection(db, 'rooms', MAIN_ROOM, 'words'));
+      transaction.set(wordRef, {...word, count:0, totalScore:0, order:index, createdAt:serverTimestamp(), updatedAt:serverTimestamp()});
+    });
+  });
+  await enter(MAIN_ROOM);
 }
 
 async function enter(code, snapshot) {
   snapshot = snapshot || await getDoc(doc(db, 'rooms', code));
   if (!snapshot.exists()) throw new Error('部屋が見つかりません');
   room = code;
-  roomHostUid = snapshot.data().hostUid;
-  host = roomHostUid === user.uid;
-  location.hash = new URLSearchParams({room:code}).toString();
   $('#setup').classList.add('hidden');
   $('#game').classList.remove('hidden');
-  $('#roomCode').textContent = code;
-  $('#role').textContent = host ? '主催者：言葉と得点を編集できます' : '参加者：＋ボタンで加算できます';
-  $('#addBtn').classList.toggle('hidden', !host);
-  $('#resetBtn').classList.toggle('hidden', !host);
+  $('#roomCode').textContent = 'みんなの部屋';
+  $('#role').textContent = '全員が言葉と得点を編集できます';
 
   const memberRef = doc(db, 'rooms', code, 'members', user.uid);
   await runTransaction(db, async transaction => {
@@ -203,20 +166,18 @@ function render() {
     meta.append(pointText, ` ・ 合計 ${totalScore}点`);
     details.append(title, meta);
 
-    if (host) {
-      const actions = document.createElement('div');
-      actions.className = 'actions';
-      const edit = document.createElement('button');
-      edit.className = 'icon edit';
-      edit.textContent = '編集';
-      edit.onclick = () => openEditor(word);
-      const remove = document.createElement('button');
-      remove.className = 'icon del';
-      remove.textContent = '削除';
-      remove.onclick = () => removeWord(word).catch(error => toast(error.message));
-      actions.append(edit, remove);
-      details.append(actions);
-    }
+    const actions = document.createElement('div');
+    actions.className = 'actions';
+    const edit = document.createElement('button');
+    edit.className = 'icon edit';
+    edit.textContent = '編集';
+    edit.onclick = () => openEditor(word);
+    const remove = document.createElement('button');
+    remove.className = 'icon del';
+    remove.textContent = '削除';
+    remove.onclick = () => removeWord(word).catch(error => toast(error.message));
+    actions.append(edit, remove);
+    details.append(actions);
 
     const counter = document.createElement('div');
     counter.className = 'counter';
@@ -264,10 +225,10 @@ function renderMembers() {
     const name = document.createElement('div');
     name.className = 'memberName';
     name.textContent = typeof entry.member.name === 'string' ? entry.member.name : 'ゲスト';
-    if (entry.member.uid === user.uid || entry.member.uid === roomHostUid) {
+    if (entry.member.uid === user.uid) {
       const badge = document.createElement('span');
       badge.className = 'badge';
-      badge.textContent = entry.member.uid === user.uid ? (entry.member.uid === roomHostUid ? '自分・主催者' : '自分') : '主催者';
+      badge.textContent = '自分';
       name.append(badge);
     }
     const count = document.createElement('div');
@@ -317,7 +278,6 @@ function openEditor(word) {
 
 async function saveWord(event) {
   event.preventDefault();
-  if (!host) throw new Error('主催者のみ編集できます');
   const text = $('#wordText').value.trim();
   const points = Number($('#wordPoints').value);
   const id = $('#editId').value;
@@ -342,17 +302,7 @@ async function saveWord(event) {
 }
 
 async function removeWord(word) {
-  if (!host) return;
   if (confirm(`「${word.text}」を削除しますか？`)) await deleteDoc(doc(db, 'rooms', room, 'words', word.id));
-}
-
-async function resetAll() {
-  if (!host || !confirm('すべてのカウントと得点を0にしますか？')) return;
-  const batch = writeBatch(db);
-  words.forEach(word => batch.update(doc(db, 'rooms', room, 'words', word.id), {count:0, totalScore:0, updatedAt:serverTimestamp()}));
-  memberWords.forEach(item => batch.update(doc(db, 'rooms', room, 'memberWords', item.id), {count:0, updatedAt:serverTimestamp()}));
-  await batch.commit();
-  toast('リセットしました');
 }
 
 async function copyShareUrl() {
@@ -368,24 +318,19 @@ function leaveRoom() {
   unsubscribers.forEach(stop => stop());
   unsubscribers = [];
   room = '';
-  host = false;
-  roomHostUid = '';
   words = [];
   members = [];
   memberWords = [];
-  history.replaceState(null, '', `${location.pathname}${location.search}`);
   $('#game').classList.add('hidden');
   $('#setup').classList.remove('hidden');
+  $('#playerName').value = localStorage.getItem('kp-name') || '';
   render();
 }
 
-$('#createBtn').onclick = () => createRoom().catch(error => toast(`作成エラー: ${error.message}`));
 $('#joinBtn').onclick = () => joinRoom().catch(error => toast(`参加エラー: ${error.message}`));
-$('#roomInput').oninput = event => { event.target.value = normalizeRoomCode(event.target.value); };
 $('#addBtn').onclick = () => openEditor();
 $('#editorForm').onsubmit = event => saveWord(event).catch(error => toast(error.message));
 $('#cancelBtn').onclick = () => $('#editor').close();
-$('#resetBtn').onclick = () => resetAll().catch(error => toast(error.message));
 $('#copyBtn').onclick = copyShareUrl;
 $('#leaveBtn').onclick = leaveRoom;
 window.addEventListener('offline', () => setStatus('オフライン', 'warn'));

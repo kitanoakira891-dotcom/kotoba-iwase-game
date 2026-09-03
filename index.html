@@ -17,19 +17,16 @@
   </header>
 
   <section id="setup" class="panel setup" aria-labelledby="setupTitle">
-    <h2 id="setupTitle">ゲームを始める</h2>
+    <h2 id="setupTitle">みんなの部屋に参加</h2>
     <label>表示名<input id="playerName" maxlength="16" autocomplete="nickname" placeholder="例：あきら"></label>
-    <button id="createBtn" class="primary wide" disabled>新しい部屋を作る</button>
-    <div class="or"><span>または</span></div>
-    <label>6桁の部屋コード<input id="roomInput" maxlength="6" autocomplete="off" autocapitalize="characters" spellcheck="false" inputmode="text" placeholder="ABC123"></label>
-    <button id="joinBtn" class="secondary wide" disabled>部屋に参加</button>
-    <p class="note">参加者のアカウント登録は不要です。主催者が送ったURLまたは部屋コードで参加できます。</p>
+    <button id="joinBtn" class="primary wide" disabled>参加する</button>
+    <p class="note">入力した名前はこのブラウザに保存され、次回から自動的に参加します。</p>
   </section>
 
   <section id="game" class="hidden" aria-labelledby="tableTitle">
     <section class="panel roombar">
-      <div><small>ROOM</small><strong id="roomCode">------</strong></div>
-      <button id="copyBtn" class="mini">共有URLをコピー</button>
+      <div><small>ROOM</small><strong id="roomCode">みんなの部屋</strong></div>
+      <button id="copyBtn" class="mini">URLをコピー</button>
       <button id="leaveBtn" class="mini neutral">退出</button>
     </section>
     <section class="summary" aria-label="集計">
@@ -43,7 +40,6 @@
     <section class="heading"><div><h2 id="tableTitle">得点表</h2><p id="role" class="muted"></p></div><button id="addBtn" class="primary compact">＋ 言葉を追加</button></section>
     <div id="wordList" class="wordList"></div>
     <div id="empty" class="panel empty hidden">言葉が登録されていません。</div>
-    <button id="resetBtn" class="reset hidden">すべての得点をリセット</button>
   </section>
 </main>
 
