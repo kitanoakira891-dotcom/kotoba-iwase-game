@@ -7,6 +7,7 @@
   <meta name="description" content="友人とリアルタイムで共有できる、言葉の回数と得点のカウンター">
   <title>ことばポイント</title>
   <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="leaderboard.css">
 </head>
 <body>
 <main class="shell">
@@ -34,6 +35,10 @@
     <section class="summary" aria-label="集計">
       <div class="summaryCard purple"><span>合計得点</span><strong id="scoreTotal">0</strong></div>
       <div class="summaryCard dark"><span>総カウント</span><strong id="countTotal">0</strong></div>
+    </section>
+    <section class="panel leaderboard" aria-labelledby="leaderboardTitle">
+      <div class="leaderboardHead"><h2 id="leaderboardTitle">参加者スコア</h2><span id="memberCount" class="muted">0人</span></div>
+      <div id="memberList" class="memberList"></div>
     </section>
     <section class="heading"><div><h2 id="tableTitle">得点表</h2><p id="role" class="muted"></p></div><button id="addBtn" class="primary compact">＋ 言葉を追加</button></section>
     <div id="wordList" class="wordList"></div>

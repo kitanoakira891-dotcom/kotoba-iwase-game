@@ -17,8 +17,11 @@ let db;
 let user;
 let room = '';
 let host = false;
+let roomHostUid = '';
 let words = [];
-let unsubscribe;
+let members = [];
+let memberWords = [];
+let unsubscribers = [];
 let toastTimer;
 
 function isConfigured(config) {
@@ -118,7 +121,8 @@ async function enter(code, snapshot) {
   snapshot = snapshot || await getDoc(doc(db, 'rooms', code));
   if (!snapshot.exists()) throw new Error('部屋が見つかりません');
   room = code;
-  host = snapshot.data().hostUid === user.uid;
+  roomHostUid = snapshot.data().hostUid;
+  host = roomHostUid === user.uid;
   location.hash = new URLSearchParams({room:code}).toString();
   $('#setup').classList.add('hidden');
   $('#game').classList.remove('hidden');
@@ -127,15 +131,44 @@ async function enter(code, snapshot) {
   $('#addBtn').classList.toggle('hidden', !host);
   $('#resetBtn').classList.toggle('hidden', !host);
 
-  unsubscribe?.();
-  unsubscribe = onSnapshot(
+  const memberRef = doc(db, 'rooms', code, 'members', user.uid);
+  await runTransaction(db, async transaction => {
+    const current = await transaction.get(memberRef);
+    if (current.exists()) {
+      transaction.update(memberRef, {name:playerName(), updatedAt:serverTimestamp()});
+    } else {
+      transaction.set(memberRef, {uid:user.uid, name:playerName(), joinedAt:serverTimestamp(), updatedAt:serverTimestamp()});
+    }
+  });
+
+  unsubscribers.forEach(stop => stop());
+  unsubscribers = [];
+  unsubscribers.push(onSnapshot(
     query(collection(db, 'rooms', code, 'words'), orderBy('order')),
     snapshot => {
       words = snapshot.docs.map(item => ({id:item.id, ...item.data()}));
       render();
+      renderMembers();
     },
     error => toast(`同期エラー: ${error.message}`)
-  );
+  ));
+  unsubscribers.push(onSnapshot(
+    collection(db, 'rooms', code, 'members'),
+    snapshot => {
+      members = snapshot.docs.map(item => ({id:item.id, ...item.data()}));
+      renderMembers();
+    },
+    error => toast(`参加者の同期エラー: ${error.message}`)
+  ));
+  unsubscribers.push(onSnapshot(
+    collection(db, 'rooms', code, 'memberWords'),
+    snapshot => {
+      memberWords = snapshot.docs.map(item => ({id:item.id, ...item.data()}));
+      render();
+      renderMembers();
+    },
+    error => toast(`スコアの同期エラー: ${error.message}`)
+  ));
 }
 
 function render() {
@@ -186,12 +219,19 @@ function render() {
     const countText = document.createElement('span');
     countText.className = 'count';
     countText.textContent = String(count);
+    const mine = memberWords.find(item => item.uid === user.uid && item.wordId === word.id)?.count || 0;
+    const minus = document.createElement('button');
+    minus.className = 'minus';
+    minus.textContent = '−';
+    minus.disabled = mine <= 0;
+    minus.setAttribute('aria-label', `${title.textContent}を減らす`);
+    minus.onclick = () => adjustCount(word, -1);
     const plus = document.createElement('button');
     plus.className = 'plus';
     plus.textContent = '＋';
     plus.setAttribute('aria-label', `${title.textContent}を加算`);
-    plus.onclick = () => increment(word);
-    counter.append(countText, plus);
+    plus.onclick = () => adjustCount(word, 1);
+    counter.append(countText, minus, plus);
     item.append(details, counter);
     list.append(item);
   }
@@ -201,21 +241,64 @@ function render() {
   $('#empty').classList.toggle('hidden', words.length !== 0);
 }
 
-async function increment(word) {
+function renderMembers() {
+  const list = $('#memberList');
+  list.replaceChildren();
+  const pointsByWord = new Map(words.map(word => [word.id, finiteNumber(word.points)]));
+  const totals = new Map(members.map(member => [member.uid, {member, count:0, score:0}]));
+  for (const item of memberWords) {
+    const total = totals.get(item.uid);
+    if (!total) continue;
+    const count = finiteNumber(item.count);
+    total.count += count;
+    total.score += count * (pointsByWord.get(item.wordId) || 0);
+  }
+  const ranking = [...totals.values()].sort((a, b) => b.score - a.score || b.count - a.count || String(a.member.name).localeCompare(String(b.member.name), 'ja'));
+  for (const entry of ranking) {
+    const row = document.createElement('div');
+    row.className = 'member';
+    const name = document.createElement('div');
+    name.className = 'memberName';
+    name.textContent = typeof entry.member.name === 'string' ? entry.member.name : 'ゲスト';
+    if (entry.member.uid === user.uid || entry.member.uid === roomHostUid) {
+      const badge = document.createElement('span');
+      badge.className = 'badge';
+      badge.textContent = entry.member.uid === user.uid ? (entry.member.uid === roomHostUid ? '自分・主催者' : '自分') : '主催者';
+      name.append(badge);
+    }
+    const count = document.createElement('div');
+    count.className = 'memberStat';
+    count.innerHTML = `<span>カウント</span><strong>${entry.count}</strong>`;
+    const score = document.createElement('div');
+    score.className = 'memberStat';
+    score.innerHTML = `<span>得点</span><strong>${entry.score}</strong>`;
+    row.append(name, count, score);
+    list.append(row);
+  }
+  $('#memberCount').textContent = `${members.length}人`;
+}
+
+async function adjustCount(word, delta) {
   const ref = doc(db, 'rooms', room, 'words', word.id);
+  const memberWordRef = doc(db, 'rooms', room, 'memberWords', `${user.uid}_${word.id}`);
   try {
     await runTransaction(db, async transaction => {
-      const snapshot = await transaction.get(ref);
+      const [snapshot, memberSnapshot] = await Promise.all([transaction.get(ref), transaction.get(memberWordRef)]);
       if (!snapshot.exists()) throw new Error('項目が削除されています');
       const data = snapshot.data();
+      const personalCount = memberSnapshot.exists() ? memberSnapshot.data().count : 0;
+      if (delta < 0 && personalCount <= 0) throw new Error('自分が加算した回数は0です');
       transaction.update(ref, {
-        count:data.count + 1,
-        totalScore:data.totalScore + data.points,
+        count:data.count + delta,
+        totalScore:data.totalScore + data.points * delta,
         updatedAt:serverTimestamp()
       });
+      const personalData = {uid:user.uid, wordId:word.id, count:personalCount + delta, updatedAt:serverTimestamp()};
+      if (memberSnapshot.exists()) transaction.update(memberWordRef, {count:personalData.count, updatedAt:personalData.updatedAt});
+      else transaction.set(memberWordRef, personalData);
     });
   } catch (error) {
-    toast(`加算できませんでした: ${error.message}`);
+    toast(`変更できませんでした: ${error.message}`);
   }
 }
 
@@ -263,6 +346,7 @@ async function resetAll() {
   if (!host || !confirm('すべてのカウントと得点を0にしますか？')) return;
   const batch = writeBatch(db);
   words.forEach(word => batch.update(doc(db, 'rooms', room, 'words', word.id), {count:0, totalScore:0, updatedAt:serverTimestamp()}));
+  memberWords.forEach(item => batch.update(doc(db, 'rooms', room, 'memberWords', item.id), {count:0, updatedAt:serverTimestamp()}));
   await batch.commit();
   toast('リセットしました');
 }
@@ -277,11 +361,14 @@ async function copyShareUrl() {
 }
 
 function leaveRoom() {
-  unsubscribe?.();
-  unsubscribe = undefined;
+  unsubscribers.forEach(stop => stop());
+  unsubscribers = [];
   room = '';
   host = false;
+  roomHostUid = '';
   words = [];
+  members = [];
+  memberWords = [];
   history.replaceState(null, '', `${location.pathname}${location.search}`);
   $('#game').classList.add('hidden');
   $('#setup').classList.remove('hidden');

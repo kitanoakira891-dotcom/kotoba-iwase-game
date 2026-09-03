@@ -1,82 +1,114 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    function signedIn() {
-      return request.auth != null;
-    }
+    function signedIn() { return request.auth != null; }
 
     match /rooms/{roomId} {
-      function isHost() {
-        return signedIn() && resource.data.hostUid == request.auth.uid;
+      function roomAfter() {
+        return getAfter(/databases/$(database)/documents/rooms/$(roomId));
       }
-
+      function roomHost() {
+        return signedIn() && roomAfter().data.hostUid == request.auth.uid;
+      }
       function validRoom(data) {
         return data.keys().hasOnly(['hostUid', 'hostName', 'createdAt'])
-          && data.hostUid is string
-          && data.hostUid == request.auth.uid
-          && data.hostName is string
-          && data.hostName.size() >= 1
-          && data.hostName.size() <= 16
+          && data.hostUid is string && data.hostUid == request.auth.uid
+          && data.hostName is string && data.hostName.size() >= 1 && data.hostName.size() <= 16
           && data.createdAt == request.time;
       }
 
-      // 部屋コードの総当たりを容易にする一覧取得は拒否し、既知コードの直接取得だけを許可する。
       allow get: if signedIn();
       allow list: if false;
-      allow create: if signedIn()
-        && roomId.matches('^[A-Z2-9]{6}$')
-        && validRoom(request.resource.data);
+      allow create: if signedIn() && roomId.matches('^[A-Z2-9]{6}$') && validRoom(request.resource.data);
       allow update: if false;
-      allow delete: if isHost();
+      allow delete: if roomHost();
+
+      match /members/{memberId} {
+        function validMember(data) {
+          return data.keys().hasOnly(['uid', 'name', 'joinedAt', 'updatedAt'])
+            && data.uid is string && data.uid == memberId
+            && data.name is string && data.name.size() >= 1 && data.name.size() <= 16
+            && data.joinedAt is timestamp && data.updatedAt is timestamp;
+        }
+        allow read: if signedIn();
+        allow create: if signedIn() && memberId == request.auth.uid
+          && validMember(request.resource.data)
+          && request.resource.data.joinedAt == request.time
+          && request.resource.data.updatedAt == request.time;
+        allow update: if signedIn() && memberId == request.auth.uid
+          && validMember(request.resource.data)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'updatedAt'])
+          && request.resource.data.updatedAt == request.time;
+        allow delete: if roomHost() || (signedIn() && memberId == request.auth.uid);
+      }
 
       match /words/{wordId} {
-        function roomDoc() {
-          return get(/databases/$(database)/documents/rooms/$(roomId));
-        }
-
-        function roomHost() {
-          return signedIn() && roomDoc().data.hostUid == request.auth.uid;
-        }
-
         function validWord(data) {
           return data.keys().hasOnly(['text', 'points', 'count', 'totalScore', 'order', 'createdAt', 'updatedAt'])
-            && data.text is string
-            && data.text.size() >= 1
-            && data.text.size() <= 40
-            && data.points is int
-            && data.points >= -999
-            && data.points <= 999
-            && data.count is int
-            && data.count >= 0
-            && data.count <= 1000000
-            && data.totalScore is int
-            && data.totalScore == data.count * data.points
-            && data.order is int
-            && data.createdAt is timestamp
-            && data.updatedAt is timestamp;
+            && data.text is string && data.text.size() >= 1 && data.text.size() <= 40
+            && data.points is int && data.points >= -999 && data.points <= 999
+            && data.count is int && data.count >= 0 && data.count <= 1000000
+            && data.totalScore is int && data.totalScore == data.count * data.points
+            && data.order is int && data.createdAt is timestamp && data.updatedAt is timestamp;
         }
-
+        function personalChangeMatches(delta) {
+          let path = /databases/$(database)/documents/rooms/$(roomId)/memberWords/$(request.auth.uid + '_' + wordId);
+          let before = get(path);
+          let after = getAfter(path);
+          return after.exists() && after.data.uid == request.auth.uid && after.data.wordId == wordId
+            && (before.exists() ? after.data.count == before.data.count + delta : delta == 1 && after.data.count == 1);
+        }
         allow read: if signedIn();
-        allow create: if roomHost()
-          && validWord(request.resource.data)
-          && request.resource.data.count == 0
-          && request.resource.data.totalScore == 0
-          && request.resource.data.createdAt == request.time
-          && request.resource.data.updatedAt == request.time;
+        allow create: if roomHost() && validWord(request.resource.data)
+          && request.resource.data.count == 0 && request.resource.data.totalScore == 0
+          && request.resource.data.createdAt == request.time && request.resource.data.updatedAt == request.time;
         allow delete: if roomHost();
         allow update: if (
-          roomHost()
-          && validWord(request.resource.data)
+          roomHost() && validWord(request.resource.data)
           && request.resource.data.createdAt == resource.data.createdAt
           && request.resource.data.updatedAt == request.time
         ) || (
-          signedIn()
-          && validWord(request.resource.data)
+          signedIn() && validWord(request.resource.data)
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['count', 'totalScore', 'updatedAt'])
-          && request.resource.data.count == resource.data.count + 1
-          && request.resource.data.totalScore == resource.data.totalScore + resource.data.points
+          && (request.resource.data.count == resource.data.count + 1 || request.resource.data.count == resource.data.count - 1)
+          && request.resource.data.totalScore == resource.data.totalScore
+            + (request.resource.data.count - resource.data.count) * resource.data.points
           && request.resource.data.updatedAt == request.time
+          && personalChangeMatches(request.resource.data.count - resource.data.count)
         );
+      }
+
+      match /memberWords/{memberWordId} {
+        function validMemberWord(data) {
+          return data.keys().hasOnly(['uid', 'wordId', 'count', 'updatedAt'])
+            && data.uid is string && data.wordId is string
+            && memberWordId == data.uid + '_' + data.wordId
+            && data.count is int && data.count >= 0 && data.count <= 1000000
+            && data.updatedAt is timestamp;
+        }
+        function wordChangeMatches(delta) {
+          let before = get(/databases/$(database)/documents/rooms/$(roomId)/words/$(request.resource.data.wordId));
+          let after = getAfter(/databases/$(database)/documents/rooms/$(roomId)/words/$(request.resource.data.wordId));
+          return before.exists() && after.exists()
+            && after.data.count == before.data.count + delta
+            && after.data.totalScore == before.data.totalScore + delta * before.data.points;
+        }
+        allow read: if signedIn();
+        allow create: if signedIn() && request.resource.data.uid == request.auth.uid
+          && validMemberWord(request.resource.data) && request.resource.data.count == 1
+          && request.resource.data.updatedAt == request.time && wordChangeMatches(1);
+        allow update: if (
+          signedIn() && resource.data.uid == request.auth.uid && validMemberWord(request.resource.data)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['count', 'updatedAt'])
+          && (request.resource.data.count == resource.data.count + 1 || request.resource.data.count == resource.data.count - 1)
+          && request.resource.data.updatedAt == request.time
+          && wordChangeMatches(request.resource.data.count - resource.data.count)
+        ) || (
+          roomHost() && validMemberWord(request.resource.data)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['count', 'updatedAt'])
+          && request.resource.data.count == 0 && request.resource.data.updatedAt == request.time
+        );
+        allow delete: if roomHost() || (signedIn() && resource.data.uid == request.auth.uid);
       }
     }
   }
