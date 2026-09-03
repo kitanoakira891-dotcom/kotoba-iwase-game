@@ -19,7 +19,7 @@ service cloud.firestore {
 
       allow get: if signedIn();
       allow list: if false;
-      allow create: if signedIn() && roomId.matches('^[A-Z2-9]{6}$') && validRoom(request.resource.data);
+      allow create: if signedIn() && roomId.matches('^[A-Z0-9]{6}$') && validRoom(request.resource.data);
       allow update: if false;
       allow delete: if roomHost();
 
@@ -53,10 +53,13 @@ service cloud.firestore {
         }
         function personalChangeMatches(delta) {
           let path = /databases/$(database)/documents/rooms/$(roomId)/memberWords/$(request.auth.uid + '_' + wordId);
-          let before = get(path);
           let after = getAfter(path);
-          return after.exists() && after.data.uid == request.auth.uid && after.data.wordId == wordId
-            && (before.exists() ? after.data.count == before.data.count + delta : delta == 1 && after.data.count == 1);
+          return existsAfter(path)
+            && after.data.uid == request.auth.uid
+            && after.data.wordId == wordId
+            && (exists(path)
+              ? after.data.count == get(path).data.count + delta
+              : delta == 1 && after.data.count == 1);
         }
         allow read: if signedIn();
         allow create: if roomHost() && validWord(request.resource.data)
@@ -89,8 +92,7 @@ service cloud.firestore {
         function wordChangeMatches(delta) {
           let before = get(/databases/$(database)/documents/rooms/$(roomId)/words/$(request.resource.data.wordId));
           let after = getAfter(/databases/$(database)/documents/rooms/$(roomId)/words/$(request.resource.data.wordId));
-          return before.exists() && after.exists()
-            && after.data.count == before.data.count + delta
+          return after.data.count == before.data.count + delta
             && after.data.totalScore == before.data.totalScore + delta * before.data.points;
         }
         allow read: if signedIn();

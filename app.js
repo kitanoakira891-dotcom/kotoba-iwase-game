@@ -47,8 +47,12 @@ function playerName() {
 }
 
 function makeCode() {
-  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
   return Array.from({length: 6}, () => alphabet[Math.floor(Math.random() * alphabet.length)]).join('');
+}
+
+function normalizeRoomCode(value) {
+  return String(value).normalize('NFKC').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
 }
 
 function accent(points) {
@@ -77,8 +81,8 @@ async function init() {
   $('#joinBtn').disabled = false;
 
   const params = new URLSearchParams(location.hash.slice(1));
-  const code = (params.get('room') || '').toUpperCase();
-  if (/^[A-Z2-9]{6}$/.test(code)) $('#roomInput').value = code;
+  const code = normalizeRoomCode(params.get('room') || '');
+  if (/^[A-Z0-9]{6}$/.test(code)) $('#roomInput').value = code;
 }
 
 async function createRoom() {
@@ -109,8 +113,8 @@ async function createRoom() {
 
 async function joinRoom() {
   if (!user) return toast('接続中です');
-  const code = $('#roomInput').value.trim().toUpperCase();
-  if (!/^[A-Z2-9]{6}$/.test(code)) return toast('6桁の部屋コードを入力してください');
+  const code = normalizeRoomCode($('#roomInput').value);
+  if (!/^[A-Z0-9]{6}$/.test(code)) return toast('6桁の部屋コードを入力してください');
   const snapshot = await getDoc(doc(db, 'rooms', code));
   if (!snapshot.exists()) return toast('部屋が見つかりません');
   localStorage.setItem('kp-name', playerName());
@@ -377,7 +381,7 @@ function leaveRoom() {
 
 $('#createBtn').onclick = () => createRoom().catch(error => toast(`作成エラー: ${error.message}`));
 $('#joinBtn').onclick = () => joinRoom().catch(error => toast(`参加エラー: ${error.message}`));
-$('#roomInput').oninput = event => { event.target.value = event.target.value.toUpperCase().replace(/[^A-Z2-9]/g, ''); };
+$('#roomInput').oninput = event => { event.target.value = normalizeRoomCode(event.target.value); };
 $('#addBtn').onclick = () => openEditor();
 $('#editorForm').onsubmit = event => saveWord(event).catch(error => toast(error.message));
 $('#cancelBtn').onclick = () => $('#editor').close();
