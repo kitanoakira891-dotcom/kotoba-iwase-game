@@ -1,7 +1,7 @@
 import {firebaseConfig} from './firebase-config.js';
 import {initializeApp} from 'https://www.gstatic.com/firebasejs/12.2.1/firebase-app.js';
 import {getAuth, signInAnonymously} from 'https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js';
-import {getFirestore, doc, getDoc, collection, deleteDoc, onSnapshot, serverTimestamp, runTransaction, writeBatch, query, orderBy} from 'https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js';
+import {getFirestore, doc, getDoc, getDocs, collection, deleteDoc, onSnapshot, serverTimestamp, runTransaction, writeBatch, query, orderBy, where} from 'https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js';
 
 const DEFAULT_WORDS = [
   {text:'いや',points:1},{text:'でも',points:1},{text:'いや～でも～',points:1},
@@ -314,7 +314,16 @@ async function copyShareUrl() {
   }
 }
 
-function leaveRoom() {
+async function leaveRoom() {
+  const personalSnapshots = await getDocs(query(
+    collection(db, 'rooms', room, 'memberWords'),
+    where('uid', '==', user.uid)
+  ));
+  const batch = writeBatch(db);
+  personalSnapshots.forEach(item => batch.delete(item.ref));
+  batch.delete(doc(db, 'rooms', room, 'members', user.uid));
+  await batch.commit();
+
   unsubscribers.forEach(stop => stop());
   unsubscribers = [];
   room = '';
@@ -325,6 +334,8 @@ function leaveRoom() {
   $('#setup').classList.remove('hidden');
   $('#playerName').value = localStorage.getItem('kp-name') || '';
   render();
+  renderMembers();
+  toast('退出しました');
 }
 
 $('#joinBtn').onclick = () => joinRoom().catch(error => toast(`参加エラー: ${error.message}`));
@@ -332,7 +343,7 @@ $('#addBtn').onclick = () => openEditor();
 $('#editorForm').onsubmit = event => saveWord(event).catch(error => toast(error.message));
 $('#cancelBtn').onclick = () => $('#editor').close();
 $('#copyBtn').onclick = copyShareUrl;
-$('#leaveBtn').onclick = leaveRoom;
+$('#leaveBtn').onclick = () => leaveRoom().catch(error => toast(`退出できませんでした: ${error.message}`));
 window.addEventListener('offline', () => setStatus('オフライン', 'warn'));
 window.addEventListener('online', () => user && setStatus('オンライン', 'ok'));
 
