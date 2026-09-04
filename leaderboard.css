@@ -7,3 +7,5 @@
 .lobbyPanel,.roomTools{padding:18px;margin:14px 0}.sectionHead,.roomTools{display:flex;justify-content:space-between;align-items:center;gap:12px}.headActions,.roomToolButtons{display:flex;gap:8px;flex-wrap:wrap}.roomList{display:grid;gap:9px;margin-top:12px}.roomCard{display:flex;justify-content:space-between;align-items:center;width:100%;padding:14px;border:1px solid var(--line);border-radius:14px;background:#fff;text-align:left;color:#202238}.roomCard span{color:#777b90;font-size:11px}select{width:100%;padding:14px;border:1px solid #d6d8e3;border-radius:12px;background:#fff;font:inherit}@media(max-width:500px){.sectionHead,.roomTools{align-items:stretch;flex-direction:column}.headActions button,.roomToolButtons button{flex:1}}
 
 .roomRow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:stretch}.roomDelete{padding:10px 12px;background:#ffe7eb;color:#b32942;font-size:12px}
+
+.roomDelete:disabled{background:#f1f2f6;color:#9296a8;opacity:1;cursor:not-allowed}.modeBadge{display:inline-block;margin-left:6px;padding:2px 7px;border-radius:99px;background:#f0f1f6;color:#666b7e;font-size:10px}.modeBadge.admin{background:#ffe7eb;color:#b32942}
