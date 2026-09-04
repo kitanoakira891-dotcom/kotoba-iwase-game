@@ -12,7 +12,6 @@ service cloud.firestore {
         allow read: if signedIn() && main();
         allow create: if signedIn() && main() && memberId==request.auth.uid && valid(request.resource.data);
         allow update: if signedIn() && main() && memberId==request.auth.uid && valid(request.resource.data) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name','lastSeenAt','updatedAt']);
-        // 管理者ボタンは画面側の簡易制御。削除処理を成立させるため匿名認証済み利用者に許可。
         allow delete: if signedIn() && main();
       }
       match /words/{wordId} {
