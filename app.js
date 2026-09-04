@@ -41,18 +41,23 @@ function eventColor(text,index){let h=0;for(const ch of String(text))h=(h*31+ch.
 function drawTimeline(source){
   const c=$('#timelineChart'),legend=$('#timelineLegend'),dpr=devicePixelRatio||1,w=c.clientWidth||600,h=280;
   c.width=w*dpr;c.height=h*dpr;const x=c.getContext('2d');x.setTransform(dpr,0,0,dpr,0,0);x.clearRect(0,0,w,h);legend.replaceChildren();
-  const active=activeUidSet();const data=source.map(e=>({...e,date:eventDate(e)})).filter(e=>e.date&&active.has(e.uid)).sort((a,b)=>a.date-b.date);
-  if(!data.length){x.fillStyle='#777b90';x.font='13px system-ui';x.fillText('まだ時刻データがありません',10,24);return;}
-  const names=[...new Set(data.map(e=>e.name||members.find(m=>m.uid===e.uid)?.name||'不明'))];
-  const texts=[...new Set(data.map(e=>e.wordText||words.find(v=>v.id===e.wordId)?.text||'削除済み'))];
+  const active=activeUidSet();
+  const raw=source.map(e=>({...e,date:eventDate(e)})).filter(e=>e.date&&active.has(e.uid)).sort((a,b)=>a.date-b.date);
+  if(!raw.length){x.fillStyle='#777b90';x.font='13px system-ui';x.fillText('まだ時刻データがありません',10,24);return;}
+  const texts=[...new Set(raw.map(e=>e.wordText||words.find(v=>v.id===e.wordId)?.text||'削除済み'))];
   const palette=new Map(texts.map((t,i)=>[t,eventColor(t,i)]));
-  const min=data[0].date.getTime(),rawMax=data.at(-1).date.getTime(),max=rawMax===min?min+60000:rawMax;
-  const left=Math.min(90,w*.26),right=18,top=24,bottom=38,plotW=w-left-right,plotH=h-top-bottom,row=plotH/Math.max(1,names.length);
-  x.font='11px system-ui';x.strokeStyle='#e4e6ef';x.fillStyle='#666a7e';x.textBaseline='middle';
-  names.forEach((n,i)=>{const y=top+row*(i+.5);x.beginPath();x.moveTo(left,y);x.lineTo(w-right,y);x.stroke();const label=n.length>10?n.slice(0,9)+'…':n;x.fillText(label,2,y)});
-  for(let i=0;i<=4;i++){const px=left+plotW*i/4,ts=min+(max-min)*i/4;x.strokeStyle='#eef0f5';x.beginPath();x.moveTo(px,top);x.lineTo(px,h-bottom);x.stroke();x.fillStyle='#777b90';x.textAlign=i===0?'left':i===4?'right':'center';x.textBaseline='top';x.fillText(new Date(ts).toLocaleString('ja-JP',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}),px,h-bottom+8)}
-  x.textAlign='center';x.textBaseline='middle';data.forEach(e=>{const n=e.name||members.find(m=>m.uid===e.uid)?.name||'不明',t=e.wordText||words.find(v=>v.id===e.wordId)?.text||'削除済み',px=left+(e.date.getTime()-min)/(max-min)*plotW,py=top+row*(names.indexOf(n)+.5);x.fillStyle=palette.get(t);x.beginPath();x.arc(px,py,Math.max(4,Math.min(7,Math.abs(number(e.points))*.5+3)),0,Math.PI*2);x.fill();x.fillStyle='#fff';x.font='bold 9px system-ui';x.fillText(e.delta<0?'−':'+',px,py+.5)});
-  texts.slice(0,12).forEach(t=>{const item=document.createElement('span');item.className='legendItem';const dot=document.createElement('i');dot.style.background=palette.get(t);item.append(dot,document.createTextNode(t));legend.append(item)});
+  const series=new Map(texts.map(t=>[t,[]]));
+  const cumulative=new Map(texts.map(t=>[t,0]));
+  for(const e of raw){const t=e.wordText||words.find(v=>v.id===e.wordId)?.text||'削除済み';const next=Math.max(0,(cumulative.get(t)||0)+number(e.delta));cumulative.set(t,next);series.get(t).push({date:e.date,count:next});}
+  const min=raw[0].date.getTime(),rawMax=raw.at(-1).date.getTime(),max=rawMax===min?min+60000:rawMax;
+  const maxCount=Math.max(1,...[...series.values()].flat().map(p=>p.count));
+  const left=42,right=18,top=18,bottom=42,plotW=w-left-right,plotH=h-top-bottom;
+  x.font='11px system-ui';x.lineWidth=1;
+  for(let i=0;i<=4;i++){const value=Math.round(maxCount*i/4),py=top+plotH-(plotH*i/4);x.strokeStyle='#e8eaf1';x.beginPath();x.moveTo(left,py);x.lineTo(w-right,py);x.stroke();x.fillStyle='#777b90';x.textAlign='right';x.textBaseline='middle';x.fillText(String(value),left-6,py);}
+  for(let i=0;i<=4;i++){const px=left+plotW*i/4,ts=min+(max-min)*i/4;x.strokeStyle='#eef0f5';x.beginPath();x.moveTo(px,top);x.lineTo(px,h-bottom);x.stroke();x.fillStyle='#777b90';x.textAlign=i===0?'left':i===4?'right':'center';x.textBaseline='top';x.fillText(new Date(ts).toLocaleString('ja-JP',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}),px,h-bottom+8);}
+  for(const [text,points] of series){if(!points.length)continue;x.strokeStyle=palette.get(text);x.fillStyle=palette.get(text);x.lineWidth=2;x.beginPath();points.forEach((p,i)=>{const px=left+(p.date.getTime()-min)/(max-min)*plotW,py=top+plotH-(p.count/maxCount)*plotH;if(i===0)x.moveTo(px,py);else x.lineTo(px,py)});x.stroke();for(const p of points){const px=left+(p.date.getTime()-min)/(max-min)*plotW,py=top+plotH-(p.count/maxCount)*plotH;x.beginPath();x.arc(px,py,3.5,0,Math.PI*2);x.fill();}}
+  x.save();x.translate(12,top+plotH/2);x.rotate(-Math.PI/2);x.fillStyle='#565a70';x.textAlign='center';x.textBaseline='middle';x.font='12px system-ui';x.fillText('累計回数',0,0);x.restore();
+  texts.forEach(t=>{const item=document.createElement('span');item.className='legendItem';const dot=document.createElement('i');dot.style.background=palette.get(t);item.append(dot,document.createTextNode(t));legend.append(item)});
 }
 async function adjust(w,delta){const wr=doc(db,'rooms',room,'words',w.id),mwr=doc(db,'rooms',room,'memberWords',`${user.uid}_${w.id}`),er=doc(collection(db,'rooms',room,'events'));try{await runTransaction(db,async tx=>{const [ws,ms]=await Promise.all([tx.get(wr),tx.get(mwr)]);if(!ws.exists())throw Error('項目がありません');const d=ws.data(),pc=ms.exists()?ms.data().count:0;if(delta<0&&pc<=0)throw Error('取り消せる記録がありません');tx.update(wr,{count:d.count+delta,totalScore:d.totalScore+d.points*delta,updatedAt:serverTimestamp()});const pd={uid:user.uid,wordId:w.id,count:pc+delta,updatedAt:serverTimestamp()};ms.exists()?tx.update(mwr,{count:pd.count,updatedAt:pd.updatedAt}):tx.set(mwr,pd);tx.set(er,{uid:user.uid,name:playerName(),wordId:w.id,wordText:d.text,delta,points:d.points,occurredAt:serverTimestamp()})})}catch(e){toast('変更できませんでした: '+e.message)}}
 function openEditor(w){$('#editorTitle').textContent=w?'言葉を編集':'言葉を追加';$('#editId').value=w?.id||'';$('#wordText').value=w?.text||'';$('#wordPoints').value=w?.points??1;$('#editor').showModal()}
