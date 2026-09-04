@@ -2,7 +2,7 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     function signedIn(){ return request.auth != null; }
-    function admin(){ return signedIn() && request.auth.uid == 'YOUR_ADMIN_UID'; }
+    function admin(){ return signedIn() && request.auth.uid == '9JT6fhDfvlROtjoSMOj5GqlMyE12'; }
     match /rooms/{roomId} {
       function main(){ return roomId == 'MAIN00'; }
       allow get: if signedIn() && main(); allow list, update, delete: if false;

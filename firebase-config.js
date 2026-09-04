@@ -10,4 +10,4 @@ export const firebaseConfig = {
 };
 
 // Firebase Authenticationで自分の匿名UIDを確認し、ここに設定してください。
-export const adminUid = "YOUR_ADMIN_UID";
+export const adminUid = "9JT6fhDfvlROtjoSMOj5GqlMyE12";
