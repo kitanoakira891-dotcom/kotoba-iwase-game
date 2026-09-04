@@ -1,55 +1,13 @@
-<!doctype html>
-<html lang="ja">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="theme-color" content="#6656e8">
-  <meta name="description" content="友人とリアルタイムで共有できる、言葉の回数と得点のカウンター">
-  <title>ことばポイント</title>
-  <link rel="stylesheet" href="styles.css">
-  <link rel="stylesheet" href="leaderboard.css">
-</head>
-<body>
-<main class="shell">
-  <header class="top">
-    <div><p class="eyebrow">SHARED WORD GAME</p><h1>ことばポイント</h1></div>
-    <span id="status" class="status warn" aria-live="polite">接続中</span>
-  </header>
-
-  <section id="setup" class="panel setup" aria-labelledby="setupTitle">
-    <h2 id="setupTitle">みんなの部屋に参加</h2>
-    <label>表示名<input id="playerName" maxlength="16" autocomplete="nickname" placeholder="例：あきら"></label>
-    <button id="joinBtn" class="primary wide" disabled>参加する</button>
-    <p class="note">入力した名前はこのブラウザに保存され、次回から自動的に参加します。</p>
-  </section>
-
-  <section id="game" class="hidden" aria-labelledby="tableTitle">
-    <section class="panel roombar">
-      <div><small>ROOM</small><strong id="roomCode">みんなの部屋</strong></div>
-      <button id="copyBtn" class="mini">URLをコピー</button>
-      <button id="leaveBtn" class="mini neutral">退出</button>
-    </section>
-    <section class="summary" aria-label="集計">
-      <div class="summaryCard purple"><span>自分の合計得点</span><strong id="scoreTotal">0</strong></div>
-      <div class="summaryCard dark"><span>自分の総カウント</span><strong id="countTotal">0</strong></div>
-    </section>
-    <section class="panel leaderboard" aria-labelledby="leaderboardTitle">
-      <div class="leaderboardHead"><h2 id="leaderboardTitle">参加者スコア</h2><span id="memberCount" class="muted">0人</span></div>
-      <div id="memberList" class="memberList"></div>
-    </section>
-    <section class="heading"><div><h2 id="tableTitle">得点表</h2><p id="role" class="muted"></p></div><button id="addBtn" class="primary compact">＋ 言葉を追加</button></section>
-    <div id="wordList" class="wordList"></div>
-    <div id="empty" class="panel empty hidden">言葉が登録されていません。</div>
-  </section>
-</main>
-
-<dialog id="editor" aria-labelledby="editorTitle"><form id="editorForm">
-  <h2 id="editorTitle">言葉を追加</h2><input type="hidden" id="editId">
-  <label>言葉<input id="wordText" maxlength="40" required></label>
-  <label>1回あたりの得点<input id="wordPoints" type="number" min="-999" max="999" step="1" value="1" required></label>
-  <div class="dialogButtons"><button type="button" id="cancelBtn" class="neutral">キャンセル</button><button class="primary">保存</button></div>
-</form></dialog>
-<div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
-<script type="module" src="app.js"></script>
-</body>
-</html>
+<!doctype html><html lang="ja"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#6656e8">
+<meta name="description" content="友人とリアルタイム共有する言葉ゲーム"><title>いや～でも～って言わせるゲーム</title>
+<link rel="stylesheet" href="styles.css"><link rel="stylesheet" href="leaderboard.css"></head><body>
+<main class="shell"><header class="top"><div><p class="eyebrow">SHARED WORD GAME</p><h1>いや～でも～って言わせるゲーム</h1></div><span id="status" class="status warn" aria-live="polite">接続中</span></header>
+<section id="setup" class="panel setup"><h2>みんなの部屋に参加</h2><label>表示名<input id="playerName" maxlength="16" autocomplete="nickname" placeholder="例：あきら"></label><button id="joinBtn" class="primary wide" disabled>参加する</button><p class="note">同じ端末では名前を変えてもスコアを引き継ぎます。</p></section>
+<section id="game" class="hidden"><section class="panel roombar"><div><small>ROOM</small><strong id="roomCode">みんなの部屋</strong></div><button id="copyBtn" class="mini">URLをコピー</button><button id="leaveBtn" class="mini neutral">画面を閉じる</button></section>
+<section class="summary"><div class="summaryCard purple"><span>全員の合計得点</span><strong id="scoreTotal">0</strong></div><div class="summaryCard dark"><span>全員の総カウント</span><strong id="countTotal">0</strong></div></section>
+<section class="panel leaderboard"><div class="leaderboardHead"><h2>参加者スコア</h2><span id="memberCount" class="muted">0人</span></div><div id="memberList" class="memberList"></div></section>
+<section class="panel stats"><div class="leaderboardHead"><h2>統計</h2><span class="muted">言葉別の累計</span></div><canvas id="statsChart" height="230" aria-label="言葉別カウントグラフ"></canvas><div class="tableWrap"><table><thead><tr><th>言葉</th><th>回数</th><th>得点</th></tr></thead><tbody id="statsBody"></tbody></table></div><h3 class="recentTitle">最近の記録</h3><div class="tableWrap"><table><thead><tr><th>日時</th><th>参加者</th><th>言葉</th><th>増減</th></tr></thead><tbody id="eventBody"></tbody></table></div></section>
+<section class="heading"><div><h2>得点表</h2><p id="role" class="muted"></p></div><button id="addBtn" class="primary compact">＋ 言葉を追加</button></section><div id="wordList" class="wordList"></div><div id="empty" class="panel empty hidden">言葉が登録されていません。</div></section></main>
+<dialog id="editor"><form id="editorForm"><h2 id="editorTitle">言葉を追加</h2><input type="hidden" id="editId"><label>言葉<input id="wordText" maxlength="40" required></label><label>1回あたりの得点<input id="wordPoints" type="number" min="-999" max="999" step="1" value="1" required></label><div class="dialogButtons"><button type="button" id="cancelBtn" class="neutral">キャンセル</button><button class="primary">保存</button></div></form></dialog>
+<div id="toast" class="toast hidden" role="status" aria-live="polite"></div><script type="module" src="app.js"></script></body></html>

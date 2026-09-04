@@ -8,3 +8,6 @@ export const firebaseConfig = {
   appId: "1:1041103713700:web:f074a97a1031e300fa3d31",
   measurementId: "G-RKM82TRL8M"
 };
+
+// Firebase Authenticationで自分の匿名UIDを確認し、ここに設定してください。
+export const adminUid = "YOUR_ADMIN_UID";

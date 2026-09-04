@@ -1,108 +1,38 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    function signedIn() { return request.auth != null; }
-
+    function signedIn(){ return request.auth != null; }
+    function admin(){ return signedIn() && request.auth.uid == 'YOUR_ADMIN_UID'; }
     match /rooms/{roomId} {
-      function mainRoom() { return roomId == 'MAIN00'; }
-      function validRoom(data) {
-        return data.keys().hasOnly(['createdAt']) && data.createdAt == request.time;
-      }
-
-      allow get: if signedIn() && mainRoom();
-      allow list: if false;
-      allow create: if signedIn() && mainRoom() && validRoom(request.resource.data);
-      allow update: if false;
-      allow delete: if false;
-
+      function main(){ return roomId == 'MAIN00'; }
+      allow get: if signedIn() && main(); allow list, update, delete: if false;
+      allow create: if signedIn() && main() && request.resource.data.keys().hasOnly(['createdAt']) && request.resource.data.createdAt == request.time;
       match /members/{memberId} {
-        function validMember(data) {
-          return data.keys().hasOnly(['uid', 'name', 'joinedAt', 'lastSeenAt', 'updatedAt'])
-            && data.uid is string && data.uid == memberId
-            && data.name is string && data.name.size() >= 1 && data.name.size() <= 16
-            && data.joinedAt is timestamp && data.lastSeenAt is timestamp && data.updatedAt is timestamp;
-        }
-        allow read: if signedIn() && mainRoom();
-        allow create: if signedIn() && mainRoom() && memberId == request.auth.uid
-          && validMember(request.resource.data)
-          && request.resource.data.joinedAt == request.time
-          && request.resource.data.lastSeenAt == request.time
-          && request.resource.data.updatedAt == request.time;
-        allow update: if signedIn() && mainRoom() && memberId == request.auth.uid
-          && validMember(request.resource.data)
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'lastSeenAt', 'updatedAt'])
-          && request.resource.data.lastSeenAt == request.time
-          && request.resource.data.updatedAt == request.time;
-        allow delete: if signedIn() && mainRoom() && memberId == request.auth.uid;
+        function valid(d){ return d.keys().hasOnly(['uid','name','joinedAt','lastSeenAt','updatedAt']) && d.uid==memberId && d.name is string && d.name.size()>=1 && d.name.size()<=16; }
+        allow read: if signedIn() && main();
+        allow create: if signedIn() && main() && memberId==request.auth.uid && valid(request.resource.data);
+        allow update: if signedIn() && main() && memberId==request.auth.uid && valid(request.resource.data) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name','lastSeenAt','updatedAt']);
+        allow delete: if main() && admin();
       }
-
       match /words/{wordId} {
-        function validWord(data) {
-          return data.keys().hasOnly(['text', 'points', 'count', 'totalScore', 'order', 'createdAt', 'updatedAt'])
-            && data.text is string && data.text.size() >= 1 && data.text.size() <= 40
-            && data.points is int && data.points >= -999 && data.points <= 999
-            && data.count is int && data.count >= 0 && data.count <= 1000000
-            && data.totalScore is int && data.totalScore == data.count * data.points
-            && data.order is int && data.createdAt is timestamp && data.updatedAt is timestamp;
-        }
-        function personalChangeMatches(delta) {
-          let path = /databases/$(database)/documents/rooms/$(roomId)/memberWords/$(request.auth.uid + '_' + wordId);
-          let after = getAfter(path);
-          return existsAfter(path)
-            && after.data.uid == request.auth.uid
-            && after.data.wordId == wordId
-            && (exists(path)
-              ? after.data.count == get(path).data.count + delta
-              : delta == 1 && after.data.count == 1);
-        }
-        allow read: if signedIn() && mainRoom();
-        allow create: if signedIn() && mainRoom() && validWord(request.resource.data)
-          && request.resource.data.count == 0 && request.resource.data.totalScore == 0
-          && request.resource.data.createdAt == request.time && request.resource.data.updatedAt == request.time;
-        allow delete: if signedIn() && mainRoom();
-        allow update: if (
-          signedIn() && mainRoom() && validWord(request.resource.data)
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['text', 'points', 'totalScore', 'updatedAt'])
-          && request.resource.data.count == resource.data.count
-          && request.resource.data.createdAt == resource.data.createdAt
-          && request.resource.data.updatedAt == request.time
-        ) || (
-          signedIn() && mainRoom() && validWord(request.resource.data)
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['count', 'totalScore', 'updatedAt'])
-          && (request.resource.data.count == resource.data.count + 1 || request.resource.data.count == resource.data.count - 1)
-          && request.resource.data.totalScore == resource.data.totalScore
-            + (request.resource.data.count - resource.data.count) * resource.data.points
-          && request.resource.data.updatedAt == request.time
-          && personalChangeMatches(request.resource.data.count - resource.data.count)
-        );
+        function valid(d){ return d.keys().hasOnly(['text','points','count','totalScore','order','createdAt','updatedAt']) && d.text is string && d.text.size()>=1 && d.text.size()<=40 && d.points is int && d.points>=-999 && d.points<=999 && d.count is int && d.count>=0 && d.totalScore==d.count*d.points; }
+        function personal(delta){ let p=/databases/$(database)/documents/rooms/$(roomId)/memberWords/$(request.auth.uid+'_'+wordId); return existsAfter(p) && getAfter(p).data.uid==request.auth.uid && getAfter(p).data.wordId==wordId && (exists(p)?getAfter(p).data.count==get(p).data.count+delta:delta==1&&getAfter(p).data.count==1); }
+        allow read: if signedIn() && main();
+        allow create: if signedIn() && main() && valid(request.resource.data) && request.resource.data.count==0 && request.resource.data.createdAt==request.time;
+        allow delete: if signedIn() && main();
+        allow update: if signedIn() && main() && valid(request.resource.data) && ((request.resource.data.diff(resource.data).affectedKeys().hasOnly(['text','points','totalScore','updatedAt']) && request.resource.data.count==resource.data.count) || (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['count','totalScore','updatedAt']) && (request.resource.data.count==resource.data.count+1 || request.resource.data.count==resource.data.count-1) && request.resource.data.totalScore==resource.data.totalScore+(request.resource.data.count-resource.data.count)*resource.data.points && personal(request.resource.data.count-resource.data.count)));
       }
-
-      match /memberWords/{memberWordId} {
-        function validMemberWord(data) {
-          return data.keys().hasOnly(['uid', 'wordId', 'count', 'updatedAt'])
-            && data.uid is string && data.wordId is string
-            && memberWordId == data.uid + '_' + data.wordId
-            && data.count is int && data.count >= 0 && data.count <= 1000000
-            && data.updatedAt is timestamp;
-        }
-        function wordChangeMatches(delta) {
-          let before = get(/databases/$(database)/documents/rooms/$(roomId)/words/$(request.resource.data.wordId));
-          let after = getAfter(/databases/$(database)/documents/rooms/$(roomId)/words/$(request.resource.data.wordId));
-          return after.data.count == before.data.count + delta
-            && after.data.totalScore == before.data.totalScore + delta * before.data.points;
-        }
-        allow read: if signedIn() && mainRoom();
-        allow create: if signedIn() && mainRoom() && request.resource.data.uid == request.auth.uid
-          && validMemberWord(request.resource.data) && request.resource.data.count == 1
-          && request.resource.data.updatedAt == request.time && wordChangeMatches(1);
-        allow update: if (
-          signedIn() && mainRoom() && resource.data.uid == request.auth.uid && validMemberWord(request.resource.data)
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['count', 'updatedAt'])
-          && (request.resource.data.count == resource.data.count + 1 || request.resource.data.count == resource.data.count - 1)
-          && request.resource.data.updatedAt == request.time
-          && wordChangeMatches(request.resource.data.count - resource.data.count)
-        );
-        allow delete: if signedIn() && mainRoom() && resource.data.uid == request.auth.uid;
+      match /memberWords/{id} {
+        function valid(d){ return d.keys().hasOnly(['uid','wordId','count','updatedAt']) && id==d.uid+'_'+d.wordId && d.count is int && d.count>=0; }
+        function word(delta){ let p=/databases/$(database)/documents/rooms/$(roomId)/words/$(request.resource.data.wordId); return getAfter(p).data.count==get(p).data.count+delta && getAfter(p).data.totalScore==get(p).data.totalScore+delta*get(p).data.points; }
+        allow read: if signedIn() && main();
+        allow create: if signedIn() && main() && request.resource.data.uid==request.auth.uid && valid(request.resource.data) && request.resource.data.count==1 && word(1);
+        allow update: if signedIn() && main() && resource.data.uid==request.auth.uid && valid(request.resource.data) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['count','updatedAt']) && (request.resource.data.count==resource.data.count+1 || request.resource.data.count==resource.data.count-1) && word(request.resource.data.count-resource.data.count);
+        allow delete: if main() && admin();
+      }
+      match /events/{eventId} {
+        function valid(d){ return d.keys().hasOnly(['uid','name','wordId','wordText','delta','points','occurredAt']) && d.uid==request.auth.uid && d.name is string && d.name.size()>=1 && d.name.size()<=16 && d.wordId is string && d.wordText is string && (d.delta==1 || d.delta==-1) && d.points is int && d.occurredAt==request.time; }
+        allow read: if signedIn() && main(); allow create: if signedIn() && main() && valid(request.resource.data); allow update, delete: if false;
       }
     }
   }
