@@ -2,3 +2,5 @@
 .memberDelete{padding:6px 8px;background:#ffe7eb;color:#b32942;font-size:11px}.stats{padding:18px;margin:14px 0}.stats canvas{width:100%;display:block;margin:8px 0 16px}.tableWrap{overflow:auto}table{width:100%;border-collapse:collapse;font-size:12px}th,td{padding:8px 6px;text-align:left;border-top:1px solid var(--line)}th{color:#777b90}.recentTitle{margin:20px 0 7px;font-size:15px}@media(max-width:500px){.member{grid-template-columns:minmax(0,1fr) auto auto}.memberDelete{grid-column:1/-1}}
 
 .chartTitle{margin:16px 0 6px;font-size:15px}.chartNote{margin:0 0 8px;color:#777b90;font-size:11px;line-height:1.5}.timelineLegend{display:flex;flex-wrap:wrap;gap:7px 12px;margin-top:10px}.legendItem{display:inline-flex;align-items:center;gap:5px;color:#565a70;font-size:11px}.legendItem i{width:9px;height:9px;border-radius:50%;display:inline-block}.stats canvas{touch-action:pan-y}
+
+.resetAll{display:block;margin:16px auto 2px;padding:9px 12px;background:#ffe7eb;color:#b32942;font-size:12px}

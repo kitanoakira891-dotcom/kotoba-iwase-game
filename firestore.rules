@@ -20,7 +20,7 @@ service cloud.firestore {
         allow read: if signedIn() && main();
         allow create: if signedIn() && main() && valid(request.resource.data) && request.resource.data.count==0 && request.resource.data.createdAt==request.time;
         allow delete: if signedIn() && main();
-        allow update: if signedIn() && main() && valid(request.resource.data) && ((request.resource.data.diff(resource.data).affectedKeys().hasOnly(['text','points','totalScore','updatedAt']) && request.resource.data.count==resource.data.count) || (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['count','totalScore','updatedAt']) && (request.resource.data.count==resource.data.count+1 || request.resource.data.count==resource.data.count-1) && request.resource.data.totalScore==resource.data.totalScore+(request.resource.data.count-resource.data.count)*resource.data.points && personal(request.resource.data.count-resource.data.count)));
+        allow update: if signedIn() && main() && valid(request.resource.data) && ((request.resource.data.diff(resource.data).affectedKeys().hasOnly(['text','points','totalScore','updatedAt']) && request.resource.data.count==resource.data.count) || (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['count','totalScore','updatedAt']) && (request.resource.data.count==resource.data.count+1 || request.resource.data.count==resource.data.count-1) && request.resource.data.totalScore==resource.data.totalScore+(request.resource.data.count-resource.data.count)*resource.data.points && personal(request.resource.data.count-resource.data.count)) || (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['count','totalScore','updatedAt']) && request.resource.data.count==0 && request.resource.data.totalScore==0));
       }
       match /memberWords/{id} {
         function valid(d){ return d.keys().hasOnly(['uid','wordId','count','updatedAt']) && id==d.uid+'_'+d.wordId && d.count is int && d.count>=0; }
@@ -34,7 +34,8 @@ service cloud.firestore {
         function valid(d){ return d.keys().hasOnly(['uid','name','wordId','wordText','delta','points','occurredAt']) && d.uid==request.auth.uid && d.name is string && d.name.size()>=1 && d.name.size()<=16 && d.wordId is string && d.wordText is string && (d.delta==1 || d.delta==-1) && d.points is int && d.occurredAt==request.time; }
         allow read: if signedIn() && main();
         allow create: if signedIn() && main() && valid(request.resource.data);
-        allow update, delete: if false;
+        allow update: if false;
+        allow delete: if signedIn() && main();
       }
     }
   }
