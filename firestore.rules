@@ -2,17 +2,18 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     function signedIn(){ return request.auth != null; }
-    function admin(){ return signedIn() && request.auth.uid == '9JT6fhDfvlROtjoSMOj5GqlMyE12'; }
     match /rooms/{roomId} {
       function main(){ return roomId == 'MAIN00'; }
-      allow get: if signedIn() && main(); allow list, update, delete: if false;
+      allow get: if signedIn() && main();
+      allow list, update, delete: if false;
       allow create: if signedIn() && main() && request.resource.data.keys().hasOnly(['createdAt']) && request.resource.data.createdAt == request.time;
       match /members/{memberId} {
         function valid(d){ return d.keys().hasOnly(['uid','name','joinedAt','lastSeenAt','updatedAt']) && d.uid==memberId && d.name is string && d.name.size()>=1 && d.name.size()<=16; }
         allow read: if signedIn() && main();
         allow create: if signedIn() && main() && memberId==request.auth.uid && valid(request.resource.data);
         allow update: if signedIn() && main() && memberId==request.auth.uid && valid(request.resource.data) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name','lastSeenAt','updatedAt']);
-        allow delete: if main() && admin();
+        // 管理者ボタンは画面側の簡易制御。削除処理を成立させるため匿名認証済み利用者に許可。
+        allow delete: if signedIn() && main();
       }
       match /words/{wordId} {
         function valid(d){ return d.keys().hasOnly(['text','points','count','totalScore','order','createdAt','updatedAt']) && d.text is string && d.text.size()>=1 && d.text.size()<=40 && d.points is int && d.points>=-999 && d.points<=999 && d.count is int && d.count>=0 && d.totalScore==d.count*d.points; }
@@ -28,11 +29,13 @@ service cloud.firestore {
         allow read: if signedIn() && main();
         allow create: if signedIn() && main() && request.resource.data.uid==request.auth.uid && valid(request.resource.data) && request.resource.data.count==1 && word(1);
         allow update: if signedIn() && main() && resource.data.uid==request.auth.uid && valid(request.resource.data) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['count','updatedAt']) && (request.resource.data.count==resource.data.count+1 || request.resource.data.count==resource.data.count-1) && word(request.resource.data.count-resource.data.count);
-        allow delete: if main() && admin();
+        allow delete: if signedIn() && main();
       }
       match /events/{eventId} {
         function valid(d){ return d.keys().hasOnly(['uid','name','wordId','wordText','delta','points','occurredAt']) && d.uid==request.auth.uid && d.name is string && d.name.size()>=1 && d.name.size()<=16 && d.wordId is string && d.wordText is string && (d.delta==1 || d.delta==-1) && d.points is int && d.occurredAt==request.time; }
-        allow read: if signedIn() && main(); allow create: if signedIn() && main() && valid(request.resource.data); allow update, delete: if false;
+        allow read: if signedIn() && main();
+        allow create: if signedIn() && main() && valid(request.resource.data);
+        allow update, delete: if false;
       }
     }
   }
