@@ -4,8 +4,7 @@ service cloud.firestore {
     function signedIn(){ return request.auth != null; }
     match /templates/{id} { allow read, create, update, delete: if signedIn(); }
     match /rooms/{roomId} {
-      allow read, create, update: if signedIn();
-      allow delete: if false;
+      allow read, create, update, delete: if signedIn();
       match /members/{id} { allow read: if signedIn(); allow create, update: if signedIn() && id == request.auth.uid; allow delete: if signedIn(); }
       match /words/{id} { allow read, create, update, delete: if signedIn(); }
       match /memberWords/{id} { allow read, create, update, delete: if signedIn(); }
